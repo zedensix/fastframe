@@ -13,15 +13,21 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use crate::{Config, Router};
 
+/// What the app changes on the item, applied on the tray thread.
+enum Update {
+    Label(String, String),
+    Status(Option<String>),
+}
+
 pub(crate) struct Host {
-    labels: Sender<(String, String)>,
+    updates: Sender<Update>,
     thread_id: u32,
 }
 
 impl Host {
     /// Makes the item on a new thread and waits for it to exist.
     pub(crate) fn start(config: Config, router: Router) -> Result<Self, String> {
-        let (labels, relabel) = std::sync::mpsc::channel();
+        let (updates, relabel) = std::sync::mpsc::channel();
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         std::thread::Builder::new()
             .name(format!("{}-tray", config.id))
@@ -30,11 +36,19 @@ impl Host {
         let thread_id = ready_rx
             .recv_timeout(Duration::from_secs(5))
             .map_err(|_| "the tray thread did not answer".to_owned())??;
-        Ok(Self { labels, thread_id })
+        Ok(Self { updates, thread_id })
     }
 
     pub(crate) fn set_label(&mut self, id: &str, label: String) {
-        if self.labels.send((id.to_owned(), label)).is_ok() {
+        self.update(Update::Label(id.to_owned(), label));
+    }
+
+    pub(crate) fn set_status(&mut self, status: Option<String>) {
+        self.update(Update::Status(status));
+    }
+
+    fn update(&self, update: Update) {
+        if self.updates.send(update).is_ok() {
             self.poke(WM_APP);
         }
     }
@@ -64,7 +78,7 @@ impl Drop for Host {
 fn serve(
     config: &Config,
     router: Router,
-    relabel: &Receiver<(String, String)>,
+    relabel: &Receiver<Update>,
     ready: &Sender<Result<u32, String>>,
 ) {
     let item = match crate::native::build(config, router) {
@@ -81,8 +95,11 @@ fn serve(
     // SAFETY: `message` is a valid MSG for this thread's queue.
     while unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) } > 0 {
         if message.message == WM_APP {
-            for (id, label) in relabel.try_iter() {
-                item.set_label(&id, &label);
+            for update in relabel.try_iter() {
+                match update {
+                    Update::Label(id, label) => item.set_label(&id, &label),
+                    Update::Status(status) => item.set_status(status.as_deref()),
+                }
             }
             continue;
         }

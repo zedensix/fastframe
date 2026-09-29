@@ -188,6 +188,15 @@ impl Tray {
         let _ = (id, label);
     }
 
+    /// A short status (`23%`): beside the icon in the macOS menu bar, and
+    /// after the title in the tooltip elsewhere. `None` clears it.
+    pub fn set_status(&mut self, status: Option<String>) {
+        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
+        self.host.set_status(status);
+        #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+        let _ = status;
+    }
+
     /// A window exists. On macOS the first call makes the item, and each
     /// call brings the application forward; elsewhere it does nothing.
     pub fn attach(&mut self) {
@@ -311,6 +320,12 @@ fn left_click(on_windows: bool) -> Event {
     } else {
         Event::Toggle
     }
+}
+
+/// The app's name, then its status when it has one.
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
+fn tooltip(title: &str, status: Option<&str>) -> String {
+    status.map_or_else(|| title.to_owned(), |status| format!("{title} — {status}"))
 }
 
 /// Changes the label of `id` in `menu`; whether it was there.

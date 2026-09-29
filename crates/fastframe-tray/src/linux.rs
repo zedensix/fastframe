@@ -18,6 +18,7 @@ impl Host {
             title: config.title,
             icon: config.icon,
             menu: config.menu,
+            status: None,
             router,
         };
         // Flatpak lets an app talk to the watcher but not own ksni's
@@ -39,6 +40,10 @@ impl Host {
         });
     }
 
+    pub(crate) fn set_status(&mut self, status: Option<String>) {
+        self.handle.update(|item| item.status = status);
+    }
+
     /// The item runs on its own thread from the start.
     pub(crate) fn attach(&mut self) {}
 }
@@ -53,6 +58,7 @@ struct Item {
     title: String,
     icon: DrawIcon,
     menu: Vec<MenuItem>,
+    status: Option<String>,
     router: Router,
 }
 
@@ -63,6 +69,13 @@ impl ksni::Tray for Item {
 
     fn title(&self) -> String {
         self.title.clone()
+    }
+
+    fn tool_tip(&self) -> ksni::ToolTip {
+        ksni::ToolTip {
+            title: crate::tooltip(&self.title, self.status.as_deref()),
+            ..Default::default()
+        }
     }
 
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
@@ -142,9 +155,13 @@ mod tests {
             title: "ZapFast".into(),
             icon: |size| vec![0; size * size * 4],
             menu,
+            status: None,
             router,
         };
         assert_eq!(item.id(), "zapfast");
+        assert_eq!(item.tool_tip().title, "ZapFast");
+        item.status = Some("23%".into());
+        assert_eq!(item.tool_tip().title, "ZapFast — 23%");
         assert_eq!(item.title(), "ZapFast");
         let pixmap = item.icon_pixmap();
         assert_eq!(pixmap[0].data.len(), ICON_SIZE * ICON_SIZE * 4);

@@ -11,7 +11,8 @@ const ICON_SIZE: usize = 32;
 /// The item and its entries, kept for their labels. Dropping it removes the
 /// item.
 pub(crate) struct Item {
-    _icon: TrayIcon,
+    icon: TrayIcon,
+    title: String,
     entries: Vec<(&'static str, tray_icon::menu::MenuItem)>,
 }
 
@@ -20,6 +21,16 @@ impl Item {
     pub(crate) fn set_label(&self, id: &str, label: &str) {
         if let Some((_, entry)) = self.entries.iter().find(|(known, _)| *known == id) {
             entry.set_text(label);
+        }
+    }
+
+    /// Beside the icon on macOS; the tooltip everywhere.
+    pub(crate) fn set_status(&self, status: Option<&str>) {
+        #[cfg(target_os = "macos")]
+        self.icon.set_title(status);
+        let tooltip = crate::tooltip(&self.title, status);
+        if let Err(error) = self.icon.set_tooltip(Some(tooltip)) {
+            log::debug!("could not set the tray tooltip: {error}");
         }
     }
 }
@@ -71,7 +82,8 @@ pub(crate) fn build(config: &Config, router: Router) -> Result<Item, Box<dyn std
     }));
 
     Ok(Item {
-        _icon: icon,
+        icon,
+        title: config.title.clone(),
         entries,
     })
 }

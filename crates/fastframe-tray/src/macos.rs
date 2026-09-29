@@ -31,6 +31,8 @@ thread_local! {
 pub(crate) struct Host {
     /// What the item needs, until the first window lets it be made.
     pending: Option<(Config, Router)>,
+    /// Kept for the item when it is set before the item exists.
+    status: Option<String>,
 }
 
 impl Host {
@@ -42,6 +44,7 @@ impl Host {
     pub(crate) fn start(config: Config, router: Router) -> Result<Self, String> {
         Ok(Self {
             pending: Some((config, router)),
+            status: None,
         })
     }
 
@@ -57,11 +60,25 @@ impl Host {
         });
     }
 
+    pub(crate) fn set_status(&mut self, status: Option<String>) {
+        self.status = status;
+        self.apply_status();
+    }
+
+    fn apply_status(&self) {
+        ITEM.with(|slot| {
+            if let Some(item) = slot.borrow().as_ref() {
+                item.set_status(self.status.as_deref());
+            }
+        });
+    }
+
     /// Makes the item if this is the first window, and brings the app
     /// forward.
     pub(crate) fn attach(&mut self) {
         if let Some((config, router)) = self.pending.take() {
             create(&config, router);
+            self.apply_status();
         }
         if ITEM.with(|slot| slot.borrow().is_some()) {
             activate();
@@ -273,5 +290,7 @@ mod tests {
         host.set_label("play", "Pause".into());
         let (config, _) = host.pending.as_ref().unwrap();
         assert_eq!(config.menu[0], crate::MenuItem::action("play", "Pause"));
+        host.set_status(Some("23%".into()));
+        assert_eq!(host.status.as_deref(), Some("23%"));
     }
 }
