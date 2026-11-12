@@ -57,14 +57,17 @@ pub(crate) fn build(config: &Config, router: Router) -> Result<Item, Box<dyn std
         }
     }
     // Left click toggles (macOS) or shows (Windows) the window; the menu
-    // opens on right click (Spotifast #310).
-    let icon = TrayIconBuilder::new()
+    // opens on right click (Spotifast #310). On macOS 27 a status item with
+    // any menu opens it on every click, so an app with no entries gets none.
+    let mut builder = TrayIconBuilder::new()
         .with_icon(icon)
         .with_icon_as_template(template)
         .with_tooltip(&config.title)
-        .with_menu(Box::new(menu))
-        .with_menu_on_left_click(false)
-        .build()?;
+        .with_menu_on_left_click(false);
+    if !config.menu.is_empty() {
+        builder = builder.with_menu(Box::new(menu));
+    }
+    let icon = builder.build()?;
 
     router.install();
     MenuEvent::set_event_handler(Some(|event: MenuEvent| {
